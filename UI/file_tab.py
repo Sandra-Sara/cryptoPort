@@ -14,6 +14,9 @@ class FileTab(QWidget):
     open_encryption_requested = pyqtSignal()
     open_history_requested = pyqtSignal()
 
+    # NEW SIGNAL → send (filename, receiver) to HistoryTab
+    file_uploaded = pyqtSignal(str, str)
+
     def __init__(self, user_email="", private_key="", parent=None):
         super().__init__(parent)
 
@@ -35,7 +38,7 @@ class FileTab(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # Receiver name/email (not IP)
+        # Receiver name/email
         ip_frame = QFrame()
         ip_frame.setStyleSheet("""
             QFrame {
@@ -108,7 +111,7 @@ class FileTab(QWidget):
         self.history_list.setStyleSheet("padding: 10px; border-radius: 8px;")
         layout.addWidget(self.history_list)
 
-        # Load history data
+        # Load history
         self.load_history()
 
         # Bottom buttons ---------------------------------------------------
@@ -163,6 +166,11 @@ class FileTab(QWidget):
 
             if res.status_code == 200:
                 QMessageBox.information(self, "Success", "File uploaded successfully!")
+
+                # NEW — Notify HistoryTab
+                filename = os.path.basename(self.selected_file)
+                self.file_uploaded.emit(filename, receiver)
+
                 self.load_history()
             else:
                 QMessageBox.critical(self, "Upload Failed", res.text)
@@ -171,7 +179,7 @@ class FileTab(QWidget):
             QMessageBox.critical(self, "Error", str(e))
 
     # ---------------------------------------------------------------------
-    # Load history = list files stored for this email
+    # Load history (received files)
     # ---------------------------------------------------------------------
     def load_history(self):
         self.history_list.clear()

@@ -7,7 +7,9 @@ import json
 
 app = Flask(__name__)
 
-# Directories
+# ----------------------------------------------------
+# DIRECTORIES
+# ----------------------------------------------------
 DATA_DIR = "server_data"
 RECEIVED_DIR = os.path.join(DATA_DIR, "received")
 HISTORY_DIR = os.path.join(DATA_DIR, "history")
@@ -16,18 +18,31 @@ os.makedirs(RECEIVED_DIR, exist_ok=True)
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
 
+# ----------------------------------------------------
+# HELPERS
+# ----------------------------------------------------
+def sanitize_email(email):
+    """
+    Converts user email into filesystem-safe folder name.
+    Example: sarafaria@gmail.com → sarafaria_at_gmail_com
+    """
+    return email.replace("@", "_at_").replace(".", "_")
+
+
 def now_ts():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ----------------------------------------------------
-# HISTORY FUNCTIONS (JSON BASED — REQUIRED BY UI)
+# HISTORY UTILS
 # ----------------------------------------------------
 def history_file(email):
-    return os.path.join(HISTORY_DIR, f"{email}.json")
+    safe_email = sanitize_email(email)
+    return os.path.join(HISTORY_DIR, f"{safe_email}.json")
 
 
 def load_user_history(email):
+    safe_email = sanitize_email(email)
     path = history_file(email)
     if not os.path.exists(path):
         return []
@@ -36,13 +51,14 @@ def load_user_history(email):
 
 
 def save_user_history(email, history_list):
+    safe_email = sanitize_email(email)
     path = history_file(email)
     with open(path, "w") as f:
         json.dump(history_list, f, indent=4)
 
 
 # ----------------------------------------------------
-# 0️⃣ Test route
+# TEST ROUTE
 # ----------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
@@ -50,12 +66,12 @@ def home():
 
 
 # ----------------------------------------------------
-# 1️⃣ File Upload Endpoint
+# 1️⃣ FILE UPLOAD
 # ----------------------------------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
     if "file" not in request.files:
-        return jsonify({"error": "No file"}), 400
+        return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
     receiver = request.form.get("receiver")
@@ -64,7 +80,9 @@ def upload():
     if not receiver:
         return jsonify({"error": "Missing receiver"}), 400
 
-    receiver_dir = os.path.join(RECEIVED_DIR, receiver)
+    # Safe folder name
+    safe_receiver = sanitize_email(receiver)
+    receiver_dir = os.path.join(RECEIVED_DIR, safe_receiver)
     os.makedirs(receiver_dir, exist_ok=True)
 
     file_id = str(uuid.uuid4())
@@ -74,7 +92,7 @@ def upload():
     save_path = os.path.join(receiver_dir, stored_as)
     file.save(save_path)
 
-    # Save JSON history
+    # Save history
     history = load_user_history(receiver)
     history.append({
         "timestamp": now_ts(),
@@ -94,11 +112,13 @@ def upload():
 
 
 # ----------------------------------------------------
-# 2️⃣ File List Endpoint
+# 2️⃣ LIST FILES
 # ----------------------------------------------------
 @app.route("/list/<receiver>", methods=["GET"])
 def list_files(receiver):
-    receiver_dir = os.path.join(RECEIVED_DIR, receiver)
+    safe_receiver = sanitize_email(receiver)
+    receiver_dir = os.path.join(RECEIVED_DIR, safe_receiver)
+
     if not os.path.exists(receiver_dir):
         return jsonify({"files": []})
 
@@ -106,20 +126,23 @@ def list_files(receiver):
 
 
 # ----------------------------------------------------
-# 3️⃣ File Download Endpoint
+# 3️⃣ DOWNLOAD FILE
 # ----------------------------------------------------
 @app.route("/download/<receiver>/<filename>", methods=["GET"])
 def download(receiver, filename):
-    folder = os.path.join(RECEIVED_DIR, receiver)
-    if not os.path.exists(os.path.join(folder, filename)):
+    safe_receiver = sanitize_email(receiver)
+    folder = os.path.join(RECEIVED_DIR, safe_receiver)
+
+    file_path = os.path.join(folder, filename)
+    if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
 
-    # Log to JSON history
+    # Add history log
     original_name = filename.split("_", 1)[-1]
     history = load_user_history(receiver)
     history.append({
         "timestamp": now_ts(),
-        "action": "downloaded",
+        "action": "downloaded file",
         "filename": original_name,
         "stored_as": filename
     })
@@ -129,7 +152,7 @@ def download(receiver, filename):
 
 
 # ----------------------------------------------------
-# 4️⃣ Read history (JSON format)
+# 4️⃣ READ HISTORY
 # ----------------------------------------------------
 @app.route("/history/<email>", methods=["GET"])
 def get_history(email):
@@ -137,7 +160,7 @@ def get_history(email):
 
 
 # ----------------------------------------------------
-# 5️⃣ Clear history
+# 5️⃣ CLEAR HISTORY
 # ----------------------------------------------------
 @app.route("/history/<email>/clear", methods=["DELETE"])
 def delete_history(email):
@@ -148,7 +171,7 @@ def delete_history(email):
 
 
 # ----------------------------------------------------
-# Run server
+# RUN SERVER
 # ----------------------------------------------------
 if __name__ == "__main__":
     print("🚀 CryptPort Flask Server running at http://127.0.0.1:5000")
